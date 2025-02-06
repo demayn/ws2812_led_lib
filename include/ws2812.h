@@ -1,5 +1,5 @@
-#ifndef WS2812
-#define WS2812
+#ifndef WS2812_H
+#define WS2812_H
 
 #include <stdlib.h>
 #include "driver/gpio.h"
