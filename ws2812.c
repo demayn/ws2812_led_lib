@@ -11,14 +11,6 @@ void new_ws2812(const ws2812_config *cfg, WS2812 *ws2812)
     uint8_t tmp[8][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}, {1, 1, 0}, {1, 0, 1}, {0, 1, 1}, {1, 1, 1}};
     memcpy(ws2812->color_arrays, tmp, 3 * 8);
 
-    // set functions
-    ws2812->setLEDarr = ws2812_setLEDarr;
-    ws2812->setLEDvals = ws2812_setLEDvals;
-    ws2812->setLEDcol = ws2812_setLEDcol;
-    ws2812->readLED = ws2812_readLED;
-    ws2812->writeLEDs = ws2812_writeLEDs;
-    ws2812->end = ws2812_end;
-
     // rmt settings
     ws2812->tx_config.loop_count = 0;
 
@@ -150,4 +142,10 @@ void ws2812_end(WS2812 *ws2812)
 {
     free(ws2812->led_data);
     rmt_disable(ws2812->led_chan);
+}
+
+void ws2812_task(void *arg)
+{
+    ws2812_task_data *task_data = (ws2812_task_data *)arg;
+    led_evt_t evt;
 }

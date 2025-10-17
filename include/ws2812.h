@@ -6,6 +6,8 @@
 #include "driver/rmt_tx.h"
 #include "esp_log.h"
 #include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 
 /// @brief human readable Color Shortcuts for WS2812
 typedef enum
@@ -43,14 +45,31 @@ struct WS2812
     uint8_t (*led_data)[3]; // Green Red Blue
 
     uint8_t color_arrays[8][3];
-
-    void (*setLEDarr)(WS2812 *ws2812, int16_t idx, uint8_t *color_data);
-    void (*setLEDvals)(WS2812 *ws2812, int16_t idx, uint8_t red, uint8_t green, uint8_t blue);
-    void (*setLEDcol)(WS2812 *ws2812, int16_t idx, ws2812_color color_name, uint8_t brightness);
-    void (*readLED)(WS2812 *ws2812, int16_t idx, uint8_t *color_data);
-    void (*writeLEDs)(WS2812 *ws2812);
-    void (*end)(WS2812 *ws2812);
 };
+
+typedef struct
+{
+    WS2812 *ws2812;
+    QueueHandle_t queue;
+} ws2812_task_data;
+
+typedef enum
+{
+    WS2812_BLINK_ONCE,
+    WS2812_BLINK_TWICE,
+    WS2812_BLINK_INDEFINITELY,
+    WS2812_ON,
+    WS2812_BREATHE,
+} ws2812_blink_mode;
+
+typedef struct
+{
+    int16_t idx;
+    ws2812_color color;
+    uint8_t brightness;
+    uint32_t duration; // in ms
+    ws2812_blink_mode mode;
+} led_evt_t;
 
 void new_ws2812(const ws2812_config *cfg, WS2812 *ws2812);
 void ws2812_setLEDarr(WS2812 *ws2812, int16_t idx, uint8_t *color_data);
