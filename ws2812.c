@@ -165,7 +165,8 @@ void ws2812_task(void *arg)
     led_evt_t evt;
     TaskHandle_t *led_task_handles = malloc(sizeof(TaskHandle_t) * task_data.ws2812->num_leds);
     void **task_datasets = malloc(sizeof(void *) * task_data.ws2812->num_leds); // array to hold task data pointers
-    if (led_task_handles == NULL || task_datasets == NULL)
+    ws2812_blink_mode *old_states = malloc(sizeof(ws2812_blink_mode) * task_data.ws2812->num_leds); // to memorize old states for blinking tasks
+    if (led_task_handles == NULL || task_datasets == NULL || old_states == NULL)
     {
         ESP_LOGE(TAG, "Failed to allocate memory for task handles or datasets");
         vTaskDelete(NULL);
@@ -173,6 +174,7 @@ void ws2812_task(void *arg)
     }
     memset(led_task_handles, 0, sizeof(TaskHandle_t) * task_data.ws2812->num_leds); // set all taskhandles to NULL
     memset(task_datasets, 0, sizeof(void *) * task_data.ws2812->num_leds);
+    memset(old_states, 0, sizeof(ws2812_blink_mode) * task_data.ws2812->num_leds);
     SemaphoreHandle_t ws2812_mutex = xSemaphoreCreateMutex();
 
     // wait for leds to get ready
@@ -181,6 +183,11 @@ void ws2812_task(void *arg)
     {
         if (xQueueReceive(task_data.queue, &evt, portMAX_DELAY) == pdTRUE)
         {
+            if(evt.mode == old_states[evt.idx]) // if new event is the same as old event for this led, ignore it
+                continue;
+            else
+                old_states[evt.idx] = evt.mode;
+                
             switch (evt.mode)
             {
             case WS2812_ON:
