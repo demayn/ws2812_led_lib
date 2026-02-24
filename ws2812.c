@@ -185,8 +185,10 @@ void ws2812_task(void *arg)
         {
             if(evt.mode == old_states[evt.idx].mode && evt.color == old_states[evt.idx].color && evt.brightness == old_states[evt.idx].brightness) // if new event is the same as old event for this led, ignore it
                 continue;
-            else
+            else if(evt.mode != WS2812_BLINK_ONCE && evt.mode != WS2812_BLINK_TWICE) // exclude single events from being memorized as old state, otherwise blinking tasks would not work properly
+            {
                 old_states[evt.idx] = evt; // memorize new event as old event
+            }
                 
             switch (evt.mode)
             {
@@ -240,7 +242,7 @@ void ws2812_task(void *arg)
                 if (led_task_handles[evt.idx] != NULL) // check if task already running
                 {
                     vTaskSuspend(led_task_handles[evt.idx]); // stop task
-                    vTaskDelay(1);                           // small delay othzer wise command to led is lost sometimes}
+                    vTaskDelay(1);                           // small delay otherwise command to led is lost sometimes}
                 }
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
                 uint8_t old_brightness_vals[3];
