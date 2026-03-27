@@ -328,7 +328,7 @@ void ws2812_task(void *arg)
                 blink_data->event_data = evt;
                 task_datasets[evt.idx] = (void *)blink_data; // memorize task data
 
-                xTaskCreate(blinking_task, "BLINK_TASK", 1024, (void *)blink_data, tskIDLE_PRIORITY + 1, &led_task_handles[evt.idx]);
+                xTaskCreate(blinking_task, "BLINK_TASK", 2048, (void *)blink_data, tskIDLE_PRIORITY + 1, &led_task_handles[evt.idx]);
                 break;
             }
             case WS2812_OFF:
