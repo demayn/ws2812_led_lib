@@ -118,6 +118,11 @@ void ws2812_setLEDcol(WS2812 *ws2812, int16_t idx, ws2812_color color_name, uint
 {
     if (idx != -1)
     {
+        if (idx >= ws2812->num_leds)
+        {
+            ESP_LOGW(TAG, "LED index out of bounds");
+            return;
+        }
         for (int color_idx = 0; color_idx < 3; color_idx++)
         {
             ws2812->led_data[idx][color_idx] = ws2812->color_arrays[color_name][color_idx] * brightness;
@@ -164,7 +169,7 @@ void ws2812_task(void *arg)
     ws2812_task_data task_data = *(ws2812_task_data *)arg;
     led_evt_t evt;
     TaskHandle_t *led_task_handles = malloc(sizeof(TaskHandle_t) * task_data.ws2812->num_leds);
-    void **task_datasets = malloc(sizeof(void *) * task_data.ws2812->num_leds); // array to hold task data pointers
+    void **task_datasets = malloc(sizeof(void *) * task_data.ws2812->num_leds);     // array to hold task data pointers
     led_evt_t *old_states = malloc(sizeof(led_evt_t) * task_data.ws2812->num_leds); // to memorize old states for blinking tasks
     if (led_task_handles == NULL || task_datasets == NULL || old_states == NULL)
     {
@@ -183,13 +188,13 @@ void ws2812_task(void *arg)
     {
         if (xQueueReceive(task_data.queue, &evt, portMAX_DELAY) == pdTRUE)
         {
-            if(evt.mode == old_states[evt.idx].mode && evt.color == old_states[evt.idx].color && evt.brightness == old_states[evt.idx].brightness) // if new event is the same as old event for this led, ignore it
+            if (evt.mode == old_states[evt.idx].mode && evt.color == old_states[evt.idx].color && evt.brightness == old_states[evt.idx].brightness) // if new event is the same as old event for this led, ignore it
                 continue;
-            else if(evt.mode != WS2812_BLINK_ONCE && evt.mode != WS2812_BLINK_TWICE) // exclude single events from being memorized as old state, otherwise blinking tasks would not work properly
+            else if (evt.mode != WS2812_BLINK_ONCE && evt.mode != WS2812_BLINK_TWICE) // exclude single events from being memorized as old state, otherwise blinking tasks would not work properly
             {
                 old_states[evt.idx] = evt; // memorize new event as old event
             }
-                
+
             switch (evt.mode)
             {
             case WS2812_ON:
@@ -330,7 +335,7 @@ void ws2812_task(void *arg)
                 blink_data->event_data = evt;
                 task_datasets[evt.idx] = (void *)blink_data; // memorize task data
 
-                xTaskCreate(blinking_task, "BLINK_TASK", 1024, (void *)blink_data, tskIDLE_PRIORITY + 1, &led_task_handles[evt.idx]);
+                xTaskCreate(blinking_task, "BLINK_TASK", 2048, (void *)blink_data, tskIDLE_PRIORITY + 1, &led_task_handles[evt.idx]);
                 break;
             }
             case WS2812_OFF:
