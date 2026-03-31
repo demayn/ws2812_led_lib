@@ -118,15 +118,9 @@ void ws2812_setLEDcol(WS2812 *ws2812, int16_t idx, ws2812_color color_name, uint
 {
     if (idx != -1)
     {
-<<<<<<< HEAD
         if (idx >= ws2812->num_leds)
         {
             ESP_LOGW(TAG, "LED index out of bounds");
-=======
-        if(idx >= ws2812->num_leds)
-        {
-            ESP_LOGE(TAG, "LED index out of bounds");
->>>>>>> 0756fa7e34cad812da2e444b38070a9dca2f49d8
             return;
         }
         for (int color_idx = 0; color_idx < 3; color_idx++)
