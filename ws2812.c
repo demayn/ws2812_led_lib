@@ -118,9 +118,15 @@ void ws2812_setLEDcol(WS2812 *ws2812, int16_t idx, ws2812_color color_name, uint
 {
     if (idx != -1)
     {
+<<<<<<< HEAD
         if (idx >= ws2812->num_leds)
         {
             ESP_LOGW(TAG, "LED index out of bounds");
+=======
+        if(idx >= ws2812->num_leds)
+        {
+            ESP_LOGE(TAG, "LED index out of bounds");
+>>>>>>> 0756fa7e34cad812da2e444b38070a9dca2f49d8
             return;
         }
         for (int color_idx = 0; color_idx < 3; color_idx++)
@@ -247,7 +253,7 @@ void ws2812_task(void *arg)
                 if (led_task_handles[evt.idx] != NULL) // check if task already running
                 {
                     vTaskSuspend(led_task_handles[evt.idx]); // stop task
-                    vTaskDelay(1);                           // small delay otherwise command to led is lost sometimes}
+                    vTaskDelay(1);                           // small delay otherwise command to led is lost sometimes
                 }
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
                 uint8_t old_brightness_vals[3];
@@ -344,7 +350,7 @@ void ws2812_task(void *arg)
                 {
                     vTaskDelete(led_task_handles[evt.idx]); // delete old task
                     led_task_handles[evt.idx] = NULL;
-                    vTaskDelay(1); // small delay othzer wise command to led is lost sometimes
+                    vTaskDelay(1); // small delay other wise command to led is lost sometimes
                 }
                 if (task_datasets[evt.idx] != NULL)
                 {
