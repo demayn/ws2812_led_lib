@@ -247,7 +247,7 @@ void ws2812_task(void *arg)
                 if (led_task_handles[evt.idx] != NULL) // check if task already running
                 {
                     vTaskSuspend(led_task_handles[evt.idx]); // stop task
-                    vTaskDelay(1);                           // small delay otherwise command to led is lost sometimes}
+                    vTaskDelay(1);                           // small delay otherwise command to led is lost sometimes
                 }
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
                 uint8_t old_brightness_vals[3];
