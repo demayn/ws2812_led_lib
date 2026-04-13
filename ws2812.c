@@ -238,7 +238,7 @@ void ws2812_task(void *arg)
                 breath_data->ws2812_mutex = ws2812_mutex;
                 breath_data->event_data = evt;
                 task_datasets[evt.idx] = (void *)breath_data; // memorize task data pointer for free later
-                xTaskCreate(breathing_task, "BREATH_TASK", 1024, (void *)breath_data, tskIDLE_PRIORITY + 1, &led_task_handles[evt.idx]);
+                xTaskCreate(breathing_task, "BREATH_TASK", 2048, (void *)breath_data, tskIDLE_PRIORITY + 1, &led_task_handles[evt.idx]);
 
                 break;
             }
