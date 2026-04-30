@@ -9,7 +9,8 @@ void new_ws2812(const ws2812_config *cfg, WS2812 *ws2812)
 
     // set color array
     uint8_t tmp[8][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}, {1, 1, 0}, {1, 0, 1}, {0, 1, 1}, {1, 1, 1}};
-    memcpy(ws2812->color_arrays, tmp, 3 * 8);
+    for (int i =0; i<8; i++)
+        memcpy(ws2812->color_arrays[i], tmp[i], 3);
 
     // rmt settings
     ws2812->tx_config.loop_count = 0;
