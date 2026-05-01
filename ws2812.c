@@ -54,18 +54,8 @@ void new_ws2812(const ws2812_config *cfg, WS2812 *ws2812)
 
     if (ws2812->led_evt_queue != NULL)
     {
-        // create task data
-        ws2812_task_data *task_data = malloc(sizeof(ws2812_task_data));
-        if (task_data == NULL)
-        {
-            ESP_LOGE(TAG, "Failed to allocate task data memory");
-            return;
-        }
-        task_data->ws2812 = ws2812;
-        task_data->queue = ws2812->led_evt_queue;
-
         // create ws2812 task
-        xTaskCreate(ws2812_task, "WS2812_TASK", 4096, (void *)task_data, tskIDLE_PRIORITY, NULL);
+        xTaskCreate(ws2812_task, "WS2812_TASK", 4096, (void *)ws2812, tskIDLE_PRIORITY, NULL);
     }
     else
         ws2812->led_evt_queue = NULL;
@@ -187,38 +177,41 @@ void ws2812_end(WS2812 *ws2812)
     rmt_disable(ws2812->led_chan);
 }
 
-void ws2812_task(void *arg)
+void ws2812_task(void *ws2812_v)
 {
-    if (arg == NULL)
+    if (ws2812_v == NULL)
     {
         ESP_LOGE(TAG, "ws2812_task: arg is NULL");
         vTaskDelete(NULL);
         return;
     }
     ESP_LOGI(TAG, "WS2812 task started");
-    ws2812_task_data task_data = *(ws2812_task_data *)arg;
+
+    WS2812 *ws2812 = (WS2812 *)ws2812_v;
+
     led_evt_t evt;
-    TaskHandle_t *led_task_handles = malloc(sizeof(TaskHandle_t) * task_data.ws2812->num_leds);
-    void **task_datasets = malloc(sizeof(void *) * task_data.ws2812->num_leds);     // array to hold task data pointers
-    led_evt_t *old_states = malloc(sizeof(led_evt_t) * task_data.ws2812->num_leds); // to memorize old states for blinking tasks
+    // task handles for blinking/breathing tasks for all leds
+    TaskHandle_t *led_task_handles = malloc(sizeof(TaskHandle_t) * ws2812->num_leds);
+    void **task_datasets = malloc(sizeof(void *) * ws2812->num_leds);     // array to hold task data pointers
+    led_evt_t *old_states = malloc(sizeof(led_evt_t) * ws2812->num_leds); // to memorize old states for blinking tasks
     if (led_task_handles == NULL || task_datasets == NULL || old_states == NULL)
     {
         ESP_LOGE(TAG, "Failed to allocate memory for task handles or datasets");
         vTaskDelete(NULL);
         return;
     }
-    memset(led_task_handles, 0, sizeof(TaskHandle_t) * task_data.ws2812->num_leds); // set all taskhandles to NULL
-    memset(task_datasets, 0, sizeof(void *) * task_data.ws2812->num_leds);
-    memset(old_states, 0, sizeof(led_evt_t) * task_data.ws2812->num_leds);
+    memset(led_task_handles, 0, sizeof(TaskHandle_t) * ws2812->num_leds); // set all taskhandles to NULL
+    memset(task_datasets, 0, sizeof(void *) * ws2812->num_leds);
+    memset(old_states, 0, sizeof(led_evt_t) * ws2812->num_leds);
     SemaphoreHandle_t ws2812_mutex = xSemaphoreCreateMutex();
 
     // wait for leds to get ready
     vTaskDelay(100 / portTICK_PERIOD_MS);
     while (1)
     {
-        if (xQueueReceive(task_data.queue, &evt, portMAX_DELAY) == pdTRUE)
+        if (xQueueReceive(ws2812->led_evt_queue, &evt, portMAX_DELAY) == pdTRUE)
         {
-            if (evt.idx < 0 || evt.idx >= task_data.ws2812->num_leds)
+            if (evt.idx < 0 || evt.idx >= ws2812->num_leds)
             {
                 ESP_LOGW(TAG, "Invalid LED index %d", evt.idx);
                 continue;
@@ -246,8 +239,8 @@ void ws2812_task(void *arg)
                     task_datasets[evt.idx] = NULL;
                 }
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
-                ws2812_setLEDcol(task_data.ws2812, evt.idx, evt.color, evt.brightness);
-                ws2812_writeLEDs(task_data.ws2812);
+                ws2812_setLEDcol(ws2812, evt.idx, evt.color, evt.brightness);
+                ws2812_writeLEDs(ws2812);
                 xSemaphoreGive(ws2812_mutex);
                 break;
             }
@@ -269,7 +262,7 @@ void ws2812_task(void *arg)
                 if (breath_data == NULL) // Allocation failed; cannot start breathing task
                     break;
 
-                breath_data->ws2812 = task_data.ws2812;
+                breath_data->ws2812 = ws2812;
                 breath_data->ws2812_mutex = ws2812_mutex;
                 breath_data->event_data = evt;
                 task_datasets[evt.idx] = (void *)breath_data; // memorize task data pointer for free later
@@ -286,23 +279,23 @@ void ws2812_task(void *arg)
                 }
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
                 uint8_t old_brightness_vals[3];
-                ws2812_readLED(task_data.ws2812, evt.idx, old_brightness_vals);
+                ws2812_readLED(ws2812, evt.idx, old_brightness_vals);
 
-                ws2812_setLEDcol(task_data.ws2812, evt.idx, evt.color, evt.brightness);
-                ws2812_writeLEDs(task_data.ws2812);
+                ws2812_setLEDcol(ws2812, evt.idx, evt.color, evt.brightness);
+                ws2812_writeLEDs(ws2812);
                 xSemaphoreGive(ws2812_mutex);
                 vTaskDelay(evt.duration / portTICK_PERIOD_MS);
 
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
-                ws2812_setLEDcol(task_data.ws2812, evt.idx, black, 0);
-                ws2812_writeLEDs(task_data.ws2812);
+                ws2812_setLEDcol(ws2812, evt.idx, black, 0);
+                ws2812_writeLEDs(ws2812);
                 xSemaphoreGive(ws2812_mutex);
                 vTaskDelay(evt.duration / portTICK_PERIOD_MS);
 
                 // restore old color
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
-                ws2812_setLEDarr(task_data.ws2812, evt.idx, old_brightness_vals);
-                ws2812_writeLEDs(task_data.ws2812);
+                ws2812_setLEDarr(ws2812, evt.idx, old_brightness_vals);
+                ws2812_writeLEDs(ws2812);
                 xSemaphoreGive(ws2812_mutex);
 
                 if (led_task_handles[evt.idx] != NULL)
@@ -320,27 +313,27 @@ void ws2812_task(void *arg)
                 }
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
                 uint8_t old_brightness_vals[3];
-                ws2812_readLED(task_data.ws2812, evt.idx, old_brightness_vals);
+                ws2812_readLED(ws2812, evt.idx, old_brightness_vals);
                 xSemaphoreGive(ws2812_mutex);
                 for (int i = 0; i < 2; i++)
                 {
                     xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
-                    ws2812_setLEDcol(task_data.ws2812, evt.idx, evt.color, evt.brightness);
-                    ws2812_writeLEDs(task_data.ws2812);
+                    ws2812_setLEDcol(ws2812, evt.idx, evt.color, evt.brightness);
+                    ws2812_writeLEDs(ws2812);
                     xSemaphoreGive(ws2812_mutex);
                     vTaskDelay(evt.duration / portTICK_PERIOD_MS);
 
                     xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
-                    ws2812_setLEDcol(task_data.ws2812, evt.idx, black, 0);
-                    ws2812_writeLEDs(task_data.ws2812);
+                    ws2812_setLEDcol(ws2812, evt.idx, black, 0);
+                    ws2812_writeLEDs(ws2812);
                     xSemaphoreGive(ws2812_mutex);
                     vTaskDelay(evt.duration / portTICK_PERIOD_MS);
                 }
 
                 // restore old color
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
-                ws2812_setLEDarr(task_data.ws2812, evt.idx, old_brightness_vals);
-                ws2812_writeLEDs(task_data.ws2812);
+                ws2812_setLEDarr(ws2812, evt.idx, old_brightness_vals);
+                ws2812_writeLEDs(ws2812);
                 xSemaphoreGive(ws2812_mutex);
 
                 if (led_task_handles[evt.idx] != NULL)
@@ -365,7 +358,7 @@ void ws2812_task(void *arg)
                 if (blink_data == NULL) // Allocation failed; cannot start blinking task
                     break;
 
-                blink_data->ws2812 = task_data.ws2812;
+                blink_data->ws2812 = ws2812;
                 blink_data->ws2812_mutex = ws2812_mutex;
                 blink_data->event_data = evt;
                 task_datasets[evt.idx] = (void *)blink_data; // memorize task data
@@ -388,8 +381,8 @@ void ws2812_task(void *arg)
                 }
 
                 xSemaphoreTake(ws2812_mutex, portMAX_DELAY);
-                ws2812_setLEDcol(task_data.ws2812, evt.idx, black, 0);
-                ws2812_writeLEDs(task_data.ws2812);
+                ws2812_setLEDcol(ws2812, evt.idx, black, 0);
+                ws2812_writeLEDs(ws2812);
                 xSemaphoreGive(ws2812_mutex);
                 break;
             }

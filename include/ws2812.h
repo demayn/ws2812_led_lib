@@ -68,12 +68,6 @@ typedef struct
     ws2812_blink_mode mode;
 } led_evt_t;
 
-typedef struct
-{
-    WS2812 *ws2812;
-    QueueHandle_t queue;
-} ws2812_task_data;
-
 #define BREATH_TASK_INTERVAL 5 // ticks
 typedef struct
 {
