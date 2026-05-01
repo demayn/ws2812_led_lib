@@ -6,6 +6,7 @@ void new_ws2812(const ws2812_config *cfg, WS2812 *ws2812)
     // handle ws2812 config
     ws2812->data_pin = cfg->data_pin;
     ws2812->num_leds = cfg->num_leds;
+    ws2812->led_evt_queue = cfg->led_evt_queue;
 
     // set color array
     uint8_t tmp[8][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}, {1, 1, 0}, {1, 0, 1}, {0, 1, 1}, {1, 1, 1}};
@@ -44,14 +45,24 @@ void new_ws2812(const ws2812_config *cfg, WS2812 *ws2812)
 
     // malloc led data memory
     ws2812->led_data = (uint8_t (*)[3])malloc(ws2812->num_leds * sizeof(uint8_t[3]));
+    if (ws2812->led_data == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to allocate LED data memory");
+        return;
+    }
     memset(ws2812->led_data, 0, 3 * ws2812->num_leds);
 
-    if (cfg->led_evt_queue != NULL)
+    if (ws2812->led_evt_queue != NULL)
     {
         // create task data
         ws2812_task_data *task_data = malloc(sizeof(ws2812_task_data));
+        if (task_data == NULL)
+        {
+            ESP_LOGE(TAG, "Failed to allocate task data memory");
+            return;
+        }
         task_data->ws2812 = ws2812;
-        task_data->queue = cfg->led_evt_queue;
+        task_data->queue = ws2812->led_evt_queue;
 
         // create ws2812 task
         xTaskCreate(ws2812_task, "WS2812_TASK", 4096, (void *)task_data, tskIDLE_PRIORITY, NULL);
@@ -65,8 +76,15 @@ void new_ws2812(const ws2812_config *cfg, WS2812 *ws2812)
 
 void ws2812_setLEDarr(WS2812 *ws2812, int16_t idx, uint8_t *color_data)
 {
+    if (color_data == NULL)
+        return;
     if (idx != -1)
     {
+        if (idx >= ws2812->num_leds)
+        {
+            ESP_LOGW(TAG, "LED index out of bounds");
+            return;
+        }
         for (int color = 0; color < 3; color++)
         {
             ws2812->led_data[idx][color] = color_data[color];
@@ -95,6 +113,11 @@ void ws2812_setLEDvals(WS2812 *ws2812, int16_t idx, uint8_t red, uint8_t green, 
 {
     if (idx != -1)
     {
+        if (idx >= ws2812->num_leds)
+        {
+            ESP_LOGW(TAG, "LED index out of bounds");
+            return;
+        }
         ws2812->led_data[idx][0] = green;
         ws2812->led_data[idx][1] = red;
         ws2812->led_data[idx][2] = blue;
@@ -166,6 +189,12 @@ void ws2812_end(WS2812 *ws2812)
 
 void ws2812_task(void *arg)
 {
+    if (arg == NULL)
+    {
+        ESP_LOGE(TAG, "ws2812_task: arg is NULL");
+        vTaskDelete(NULL);
+        return;
+    }
     ESP_LOGI(TAG, "WS2812 task started");
     ws2812_task_data task_data = *(ws2812_task_data *)arg;
     led_evt_t evt;
@@ -189,6 +218,11 @@ void ws2812_task(void *arg)
     {
         if (xQueueReceive(task_data.queue, &evt, portMAX_DELAY) == pdTRUE)
         {
+            if (evt.idx < 0 || evt.idx >= task_data.ws2812->num_leds)
+            {
+                ESP_LOGW(TAG, "Invalid LED index %d", evt.idx);
+                continue;
+            }
             if (evt.mode == old_states[evt.idx].mode && evt.color == old_states[evt.idx].color && evt.brightness == old_states[evt.idx].brightness) // if new event is the same as old event for this led, ignore it
                 continue;
             else if (evt.mode != WS2812_BLINK_ONCE && evt.mode != WS2812_BLINK_TWICE) // exclude single events from being memorized as old state, otherwise blinking tasks would not work properly
@@ -368,6 +402,11 @@ void ws2812_task(void *arg)
 
 void blinking_task(void *blinking_data_v)
 {
+    if (blinking_data_v == NULL)
+    {
+        vTaskDelete(NULL);
+        return;
+    }
     blink_task_data *task_data = (blink_task_data *)blinking_data_v;
 
     xSemaphoreTake(task_data->ws2812_mutex, portMAX_DELAY);
@@ -393,6 +432,11 @@ void blinking_task(void *blinking_data_v)
 
 void breathing_task(void *breathing_data_v)
 {
+    if (breathing_data_v == NULL)
+    {
+        vTaskDelete(NULL);
+        return;
+    }
     blink_task_data *task_data = (blink_task_data *)breathing_data_v;
     uint8_t current_brightness_vals[3];
     uint8_t breathing_increments[3];
