@@ -68,7 +68,7 @@ void ws2812_setLEDarr(WS2812 *ws2812, int16_t idx, uint8_t *color_data)
 {
     if (color_data == NULL)
         return;
-    if (idx != -1)
+    if (idx > -1) // non negative idx means set for specified LED, -1 (or other negative) means set for all LEDs to the same value
     {
         if (idx >= ws2812->num_leds)
         {
@@ -156,6 +156,11 @@ void ws2812_setLEDcol(WS2812 *ws2812, int16_t idx, ws2812_color color_name, uint
 
 void ws2812_readLED(WS2812 *ws2812, int16_t idx, uint8_t *color_data)
 {
+    if (color_data == NULL || idx < 0 || idx >= ws2812->num_leds)
+    {
+        ESP_LOGE(TAG, "Invalid arguments for ws2812_readLED");
+        return;
+    }
     for (int i = 0; i < 3; i++)
     {
         color_data[i] = ws2812->led_data[idx][i];
@@ -204,6 +209,12 @@ void ws2812_task(void *ws2812_v)
     memset(task_datasets, 0, sizeof(void *) * ws2812->num_leds);
     memset(old_states, 0, sizeof(led_evt_t) * ws2812->num_leds);
     SemaphoreHandle_t ws2812_mutex = xSemaphoreCreateMutex();
+    if(ws2812_mutex == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create mutex");
+        vTaskDelete(NULL);
+        return;
+    }
 
     // wait for leds to get ready
     vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -444,6 +455,11 @@ void breathing_task(void *breathing_data_v)
 
     {                                                                                                       // {} codeblock to limit breathing increment calculation scope
         uint8_t steps = (task_data->event_data.duration / portTICK_PERIOD_MS) / (2 * BREATH_TASK_INTERVAL); // 2*Interval due to up and down cycle
+        if(steps == 0) // to avoid division by zero
+        {
+            ESP_LOGW(TAG, "Breathing duration too short, setting to minimum");
+            steps = 1;
+        }
         int16_t incr = task_data->event_data.brightness / steps;
 
         for (int i = 0; i < 3; i++)
