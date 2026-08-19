@@ -12,29 +12,37 @@ void new_ws2812(const ws2812_config *cfg, WS2812 *ws2812)
     memcpy(ws2812->color_arrays, tmp, 3 * 8);
 
     // rmt settings
-    ws2812->tx_config.loop_count = 0;
+    ws2812->tx_config = (rmt_transmit_config_t){
+        .flags = {
+            .eot_level = 0,         // set output level for the "End Of Transmission"
+            .queue_nonblocking = 0, // if set, when the transaction queue is full, driver will not block the thread but return directly
+        },  
+        .loop_count = 0,
+    };
 
     rmt_tx_channel_config_t ws2812_rmt_cfg =
         {
             .clk_src = RMT_CLK_SRC_DEFAULT,
             .gpio_num = ws2812->data_pin,
             .mem_block_symbols = 128,
-            .resolution_hz = 10000000,
-            .trans_queue_depth = 16,
+            .resolution_hz = 20000000, // 10 MHz; 100ns per tick; 1 tick = 0.1us
+            .trans_queue_depth = 1,
         };
 
     rmt_bytes_encoder_config_t ws2812_enc_cfg =
         {
             .bit0.level0 = 1,
-            .bit0.duration0 = 0.3 * ws2812_rmt_cfg.resolution_hz / 1000000, // T0H=0.3us
+            .bit0.duration0 = 300ULL * ws2812_rmt_cfg.resolution_hz / 1000000000ULL, // T0H=300ns
             .bit0.level1 = 0,
-            .bit0.duration1 = 0.9 * ws2812_rmt_cfg.resolution_hz / 1000000, // T0L=0.9us
+            .bit0.duration1 = 700ULL * ws2812_rmt_cfg.resolution_hz / 1000000000ULL, // T0L=700ns
             .bit1.level0 = 1,
-            .bit1.duration0 = 0.9 * ws2812_rmt_cfg.resolution_hz / 1000000, // T1H=0.9us
+            .bit1.duration0 = 700ULL * ws2812_rmt_cfg.resolution_hz / 1000000000ULL, // T1H=700ns
             .bit1.level1 = 0,
-            .bit1.duration1 = 0.3 * ws2812_rmt_cfg.resolution_hz / 1000000, // T1L=0.3us
-            .flags.msb_first = 1,                                           // WS2812 transfer bit order: G7...G0R7...R0B7...B0
+            .bit1.duration1 = 300ULL * ws2812_rmt_cfg.resolution_hz / 1000000000ULL, // T1L=300ns
+            .flags.msb_first = 1,                                                    // WS2812 transfer bit order: G7...G0R7...R0B7...B0
         };
+
+    ESP_LOGI(TAG, "duration0: %d, duration1: %d", ws2812_enc_cfg.bit0.duration0, ws2812_enc_cfg.bit0.duration1);
 
     // enable rmt tx hw
     ESP_ERROR_CHECK(rmt_new_tx_channel(&ws2812_rmt_cfg, &ws2812->led_chan));
@@ -164,7 +172,7 @@ void ws2812_task(void *arg)
     ws2812_task_data task_data = *(ws2812_task_data *)arg;
     led_evt_t evt;
     TaskHandle_t *led_task_handles = malloc(sizeof(TaskHandle_t) * task_data.ws2812->num_leds);
-    void **task_datasets = malloc(sizeof(void *) * task_data.ws2812->num_leds); // array to hold task data pointers
+    void **task_datasets = malloc(sizeof(void *) * task_data.ws2812->num_leds);     // array to hold task data pointers
     led_evt_t *old_states = malloc(sizeof(led_evt_t) * task_data.ws2812->num_leds); // to memorize old states for blinking tasks
     if (led_task_handles == NULL || task_datasets == NULL || old_states == NULL)
     {
@@ -178,18 +186,19 @@ void ws2812_task(void *arg)
     SemaphoreHandle_t ws2812_mutex = xSemaphoreCreateMutex();
 
     // wait for leds to get ready
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
+
     while (1)
     {
         if (xQueueReceive(task_data.queue, &evt, portMAX_DELAY) == pdTRUE)
         {
-            if(evt.mode == old_states[evt.idx].mode && evt.color == old_states[evt.idx].color && evt.brightness == old_states[evt.idx].brightness) // if new event is the same as old event for this led, ignore it
+            if (evt.mode == old_states[evt.idx].mode && evt.color == old_states[evt.idx].color && evt.brightness == old_states[evt.idx].brightness) // if new event is the same as old event for this led, ignore it
                 continue;
-            else if(evt.mode != WS2812_BLINK_ONCE && evt.mode != WS2812_BLINK_TWICE) // exclude single events from being memorized as old state, otherwise blinking tasks would not work properly
+            else if (evt.mode != WS2812_BLINK_ONCE && evt.mode != WS2812_BLINK_TWICE) // exclude single events from being memorized as old state, otherwise blinking tasks would not work properly
             {
                 old_states[evt.idx] = evt; // memorize new event as old event
             }
-                
+
             switch (evt.mode)
             {
             case WS2812_ON:
